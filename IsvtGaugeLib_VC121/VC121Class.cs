@@ -1,5 +1,7 @@
 ﻿using System;
 using System.IO.Ports;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace IsvtGaugeLib_VC121
 {
@@ -52,6 +54,8 @@ namespace IsvtGaugeLib_VC121
                 _serialPort.Close();
         }
 
+        private readonly object _serialLock = new object();
+
         /// <summary>
         /// VC121에 명령을 전송하고 응답을 반환
         /// </summary>
@@ -59,21 +63,60 @@ namespace IsvtGaugeLib_VC121
         /// <returns>장치에서 받은 응답</returns>
         public string SendCommand(string command)
         {
-            if (!_serialPort.IsOpen)
+            lock (_serialLock)  //동기화 처리
             {
-                throw new InvalidOperationException("[ERROR] Serial port is closed");
-            }
+                if (!_serialPort.IsOpen)
+                {
+                    throw new InvalidOperationException("[ERROR] Serial port is closed");
+                }
 
-            _serialPort.WriteLine(command);
-            return _serialPort.ReadLine().Trim();
+                _serialPort.WriteLine(command);
+                return _serialPort.ReadLine().Trim();
+            }                
+        }        
+    }
+
+
+    public class VC121Controller
+    {
+        [DllImport("kernel32")]
+        private static extern int GetPrivateProfileString(string section, string key, string def, StringBuilder retVal, int size, string filePath);
+
+        private VC121Class _vc121class;
+
+        public VC121Controller()
+        {
+            // Ini file read
+            StringBuilder sbVal = new StringBuilder();
+
+            GetPrivateProfileString("PortName", "Port", "", sbVal, sbVal.Capacity, string.Format("{0}{1}", Global.serialPortInfoPath, "IsvtVC121PortInfo.ini"));
+            string strPortName = sbVal.ToString();
+
+            GetPrivateProfileString("BaudRate", "BaudRate", "", sbVal, sbVal.Capacity, string.Format("{0}{1}", Global.serialPortInfoPath, "IsvtVC121PortInfo.ini"));
+            int iBaudRate = Convert.ToInt32(sbVal.ToString());
+
+            GetPrivateProfileString("Parity", "Parity", "", sbVal, sbVal.Capacity, string.Format("{0}{1}", Global.serialPortInfoPath, "IsvtVC121PortInfo.ini"));
+            Parity parity = (Parity)Convert.ToInt32(sbVal.ToString());
+
+            GetPrivateProfileString("DataBits", "DataBits", "", sbVal, sbVal.Capacity, string.Format("{0}{1}", Global.serialPortInfoPath, "IsvtVC121PortInfo.ini"));
+            int iDataBits = Convert.ToInt32(sbVal.ToString());
+
+            GetPrivateProfileString("StopBits", "StopBits", "", sbVal, sbVal.Capacity, string.Format("{0}{1}", Global.serialPortInfoPath, "IsvtVC121PortInfo.ini"));
+            StopBits stopBits = (StopBits)Convert.ToInt32(sbVal.ToString());
+
+            _vc121class = new VC121Class(strPortName, iBaudRate, parity, iDataBits, stopBits);
         }
+
+        public bool Connect() => _vc121class.Open();
+
+        public void Disconnect() => _vc121class.Close();
 
         /// <summary>
         /// 진공 압력 데이터 읽기
         /// </summary>
         public string ReadPressure()
         {
-            return SendCommand("R");
+            return _vc121class.SendCommand("R");
         }
 
         /// <summary>
@@ -81,7 +124,7 @@ namespace IsvtGaugeLib_VC121
         /// </summary>
         public string ReadSetPoint1()
         {
-            return SendCommand("A");
+            return _vc121class.SendCommand("A");
         }
 
         /// <summary>
@@ -89,7 +132,7 @@ namespace IsvtGaugeLib_VC121
         /// </summary>
         public string ReadSetPoint2()
         {
-            return SendCommand("B");
+            return _vc121class.SendCommand("B");
         }
 
         /// <summary>
@@ -97,7 +140,7 @@ namespace IsvtGaugeLib_VC121
         /// </summary>
         public string ReadUnit()
         {
-            return SendCommand("U");
+            return _vc121class.SendCommand("U");
         }
 
         /// <summary>
@@ -105,7 +148,7 @@ namespace IsvtGaugeLib_VC121
         /// </summary>
         public string ReadStatus()
         {
-            return SendCommand("S");
+            return _vc121class.SendCommand("S");
         }
     }
 }
