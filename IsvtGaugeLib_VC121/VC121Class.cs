@@ -1,7 +1,9 @@
 ﻿using System;
+using System.IO;
 using System.IO.Ports;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace IsvtGaugeLib_VC121
 {
@@ -66,12 +68,30 @@ namespace IsvtGaugeLib_VC121
             lock (_serialLock)  //동기화 처리
             {
                 if (!_serialPort.IsOpen)
-                {
                     throw new InvalidOperationException("[ERROR] Serial port is closed");
-                }
 
-                _serialPort.WriteLine(command);
-                return _serialPort.ReadLine().Trim();
+                try
+                {                    
+                    Global.EventLog($"[TX] {command}");
+
+                    _serialPort.DiscardInBuffer();
+                    _serialPort.WriteLine(command);
+
+                    string response = _serialPort.ReadLine().Trim();                    
+                    Global.EventLog($"[RX] {response}");
+                    
+                    return response;
+                }
+                catch (TimeoutException tex)
+                {
+                    Global.EventLog($"[Timeout] 명령: {command} - 응답 없음");
+                    throw new TimeoutException($"VC121 응답 시간 초과: '{command}' 명령", tex);
+                }
+                catch (Exception ex)
+                {
+                    Global.EventLog($"[Error] 명령: {command} - {ex.Message}");
+                    throw; // 예외 다시 throw해서 호출자가 처리
+                }
             }                
         }        
     }
